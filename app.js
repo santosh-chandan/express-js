@@ -19,10 +19,13 @@ app.use('/api', routers);
 app.use(errorMiddleware);
 
 // DB Connect
-mongoose.connect(env.dbUri).then(
-    () => {
-        console.log("Mongodb Connected")
-    }
-);
+// Connect to MongoDB only if not in test environment
+// In your package.json scripts => Make sure the test command explicitly sets NODE_ENV=test
+if (process.env.NODE_ENV !== "test") {
+  mongoose
+    .connect(env.dbUri)
+    .then(() => console.log("Mongodb Connected"))
+    .catch((err) => console.error("Mongo connection error:", err));
+}
 
 export default app;

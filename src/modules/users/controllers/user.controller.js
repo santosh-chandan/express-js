@@ -8,3 +8,11 @@ export const register = async (req, res, next) => {
         next(error)
     }
 }
+
+export const getProfile = async (req, res, next) => {
+    try {
+        // todo
+    } catch (error) {
+        next(error)
+    }
+}
