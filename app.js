@@ -1,12 +1,25 @@
 import express from 'express'
+import cors from "cors"
 import mongoose from 'mongoose';
+import cookieParser from "cookie-parser";
 import env from './src/config/env.js'
 import routers from './src/modules/routers.js'
 import { errorMiddleware } from './src/middlewares/error.middleware.js';
 
 const app = express();
 app.use(express.json());
+app.use(cookieParser());
 
+// Enable CORS for your React frontend
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",  // ✅ no trailing slash
+      "http://localhost:3000",
+    ],
+    credentials: true, // if you use cookies or auth headers
+  })
+);
 
 app.get('/', (req, res) => {
     res.send("Hellow Express");

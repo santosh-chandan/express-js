@@ -5,7 +5,7 @@ import express from 'express'
 const router = new express.Router();
 
 router.post('/register', userController.register);
-router.get("/get", authMiddleware, userController.get);
+router.get("/profile", authMiddleware, userController.get);
 router.put("/update", authMiddleware, userController.update);
 
 export default router;

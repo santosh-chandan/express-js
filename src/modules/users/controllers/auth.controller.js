@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import User from "#users/models/user.model.js";
+import * as userService from '../services/user.services.js'
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../../../utils/jwt.js";
 
 /**
@@ -8,6 +9,7 @@ import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../../../
  * returns: { accessToken, refreshToken }
  */
 export const login = async (req, res, next) => {
+  console.log("start")
   try {
     const { email, password } = req.body;
 
@@ -46,10 +48,13 @@ export const login = async (req, res, next) => {
 
     // For web: set cookie
     if (req.headers["user-agent"].includes("Mozilla")) {
+      console.log("heeeeee")
       res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
+        secure: false,
+        // sameSite: "strict",
+        sameSite: "lax",
+        path: "/",
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
     }
@@ -67,6 +72,23 @@ export const login = async (req, res, next) => {
   }
 };
 
+export const me = async (req, res, next) => {
+  try {
+    // assuming middleware added user info to req.user
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const user = await userService.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // avoid sending password in response
+    const { password, ...userData } = user.toObject();
+    res.status(200).json({ user: userData });
+  } catch (error) {
+    next(error);
+  }
+};
+
 /**
  * POST /api/auth/refresh
  * body: { refreshToken }
@@ -74,14 +96,21 @@ export const login = async (req, res, next) => {
  */
 export const refresh = async (req, res, next) => {
   try {
-    const { refreshToken } = req.body;
-    if (!refreshToken)
-      return res.status(400).json({ message: "Refresh token required" });
+
+    const tokenFromCookie = req.cookies.refreshToken; // ✅ read from cookie
+
+    if (!tokenFromCookie) {
+      return res.status(400).json({ message: "Missing refresh token" });
+    }
+
+    // const { refreshToken } = req.body;
+    // if (!refreshToken)
+    //   return res.status(400).json({ message: "Refresh token required" });
 
     // Verify refresh token
     let payload;
     try {
-      payload = verifyRefreshToken(refreshToken);
+      payload = verifyRefreshToken(tokenFromCookie);
     } catch {
       return res.status(401).json({ message: "Invalid or expired refresh token" });
     }
@@ -91,13 +120,13 @@ export const refresh = async (req, res, next) => {
     if (!user) return res.status(401).json({ message: "User not found" });
 
     // Match stored refresh token
-    const storedToken = user.refreshTokens.find((rt) => rt.token === refreshToken);
+    const storedToken = user.refreshTokens.find((rt) => rt.token === tokenFromCookie);
     if (!storedToken)
       return res.status(401).json({ message: "Refresh token revoked or not recognized" });
 
     // Rotate token
     user.refreshTokens = user.refreshTokens.filter(
-      (rt) => rt.token !== refreshToken
+      (rt) => rt.token !== tokenFromCookie
     );
 
     const newPayload = { id: user._id.toString(), email: user.email };
