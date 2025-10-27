@@ -24,8 +24,21 @@ export const login = async (req, res, next) => {
     const accessToken = signAccessToken(payload);
     const refreshToken = signRefreshToken(payload);
 
-    // Save refresh token - simple approach: append
-    user.refreshTokens.push({ token: refreshToken });
+    // Get device info
+    const userAgent = req.headers["user-agent"] || "unknown";
+    const ip = req.headers["x-forwarded-for"] || req.ip;
+
+    // Remove any old token for same device/user-agent
+    user.refreshTokens = user.refreshTokens.filter(
+      (rt) => rt.userAgent !== userAgent
+    );
+
+    // // Save refresh token - simple approach: append
+    // user.refreshTokens.push({ token: refreshToken });
+    // await user.save();
+
+    // Add new one
+    user.refreshTokens.push({ token: refreshToken, userAgent, ip });
     await user.save();
 
     // Return tokens (you can also set refresh token in httpOnly cookie)
@@ -62,34 +75,60 @@ export const login = async (req, res, next) => {
 export const refresh = async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
-    if (!refreshToken) return res.status(400).json({ message: "Refresh token required" });
+    if (!refreshToken)
+      return res.status(400).json({ message: "Refresh token required" });
 
     // Verify refresh token
     let payload;
     try {
       payload = verifyRefreshToken(refreshToken);
-    } catch (e) {
-      return res.status(401).json({ message: "Invalid refresh token" });
+    } catch {
+      return res.status(401).json({ message: "Invalid or expired refresh token" });
     }
 
-    // Find user and ensure refresh token exists in DB
+    // Find user
     const user = await User.findById(payload.id);
-    if (!user) return res.status(401).json({ message: "Invalid refresh token" });
+    if (!user) return res.status(401).json({ message: "User not found" });
 
-    const hasToken = user.refreshTokens.some(rt => rt.token === refreshToken);
-    if (!hasToken) return res.status(401).json({ message: "Refresh token revoked" });
+    // Match stored refresh token
+    const storedToken = user.refreshTokens.find((rt) => rt.token === refreshToken);
+    if (!storedToken)
+      return res.status(401).json({ message: "Refresh token revoked or not recognized" });
 
-    // Rotate: remove old refresh token and add a new one
-    user.refreshTokens = user.refreshTokens.filter(rt => rt.token !== refreshToken);
+    // Rotate token
+    user.refreshTokens = user.refreshTokens.filter(
+      (rt) => rt.token !== refreshToken
+    );
 
     const newPayload = { id: user._id.toString(), email: user.email };
     const newAccessToken = signAccessToken(newPayload);
     const newRefreshToken = signRefreshToken(newPayload);
 
-    user.refreshTokens.push({ token: newRefreshToken });
+    // Keep same device info
+    user.refreshTokens.push({
+      token: newRefreshToken,
+      userAgent: storedToken.userAgent,
+      ip: req.headers["x-forwarded-for"] || req.ip,
+      createdAt: new Date(),
+    });
+
     await user.save();
 
-    return res.json({ accessToken: newAccessToken, refreshToken: newRefreshToken });
+    // If refresh came from a browser, also rotate cookie
+    if (storedToken.userAgent.includes("Mozilla")) {
+      res.cookie("refreshToken", newRefreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+    }
+
+    return res.json({
+      message: "Token refreshed",
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+    });
   } catch (err) {
     next(err);
   }
@@ -99,46 +138,46 @@ export const refresh = async (req, res, next) => {
  * POST /api/auth/logout
  * body: { refreshToken }
  * or cookie: refreshToken
- * Safe for both web & mobile clients
  */
 export const logout = async (req, res, next) => {
   try {
     const token = req.body.refreshToken || req.cookies.refreshToken;
-
     if (!token)
       return res.status(400).json({ message: "Refresh token required" });
+
+    const userAgent = req.headers["user-agent"] || "unknown";
 
     // Try verifying refresh token
     let payload;
     try {
       payload = verifyRefreshToken(token);
-    } catch (err) {
-      // Token invalid/expired → still clear cookie & return OK
+    } catch {
+      // Token invalid/expired → still clear cookie
       res.clearCookie("refreshToken", {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
       });
-      return res.status(200).json({ message: "Logged out" });
+      return res.status(200).json({ message: "Logged out (token invalid/expired)" });
     }
 
-    // Remove refresh token from user's DB list
+    // Remove refresh token only for this device/user-agent
     const user = await User.findById(payload.id);
     if (user) {
       user.refreshTokens = user.refreshTokens.filter(
-        (rt) => rt.token !== token
+        (rt) => rt.token !== token && rt.userAgent !== userAgent
       );
       await user.save();
     }
 
-    // Always clear cookie
+    // Clear cookie (for web)
     res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
     });
 
-    return res.status(200).json({ message: "Logged out" });
+    return res.status(200).json({ message: "Logged out successfully" });
   } catch (err) {
     next(err);
   }
