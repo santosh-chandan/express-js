@@ -147,8 +147,10 @@ export const refresh = async (req, res, next) => {
     if (storedToken.userAgent.includes("Mozilla")) {
       res.cookie("refreshToken", newRefreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
+        secure: false,
+        // sameSite: "strict",
+        sameSite: "lax",
+        path: "/",
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
     }
@@ -181,11 +183,14 @@ export const logout = async (req, res, next) => {
     try {
       payload = verifyRefreshToken(token);
     } catch {
+      //console.warn("Invalid tttttt refresh token:", error.message);
       // Token invalid/expired → still clear cookie
       res.clearCookie("refreshToken", {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
+        secure: false,
+        // sameSite: "strict",
+        sameSite: "lax",
+        path: "/",
       });
       return res.status(200).json({ message: "Logged out (token invalid/expired)" });
     }
@@ -202,8 +207,10 @@ export const logout = async (req, res, next) => {
     // Clear cookie (for web)
     res.clearCookie("refreshToken", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      secure: false,
+      // sameSite: "strict",
+      sameSite: "lax",
+      path: "/",
     });
 
     return res.status(200).json({ message: "Logged out successfully" });

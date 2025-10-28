@@ -21,6 +21,17 @@ app.use(
   })
 );
 
+
+// Debug middleware
+// app.use((req, res, next) => {
+//   console.log("---- Incoming Request ----");
+//   console.log("Path:", req.path);
+//   console.log("Cookies:", req.cookies);
+//   console.log("Body:", req.body);
+//   next();
+// });
+
+
 app.get('/', (req, res) => {
     res.send("Hellow Express");
 })
