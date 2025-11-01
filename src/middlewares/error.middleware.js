@@ -1,6 +1,6 @@
 
 export const errorMiddleware = (err, req, res, next) => {
-    console.error("❌ Error:", err.message);
+    console.error("Error:", err.message);
 
     // Default HTTP status code
     const statusCode = err.statusCode || 500;
